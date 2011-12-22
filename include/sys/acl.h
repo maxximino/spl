@@ -26,6 +26,26 @@
 #define _SPL_ACL_H
 
 #include <sys/types.h>
+typedef struct acl {
+	int		a_type;		/* the type of ACL entry */
+	uid_t		a_id;		/* the entry in -uid or gid */
+	o_mode_t	a_perm;		/* the permission field */
+} aclent_t;
+
+typedef struct acl_info acl_t;
+
+typedef enum acl_type {
+	ACLENT_T = 0,
+	ACE_T = 1
+} acl_type_t;
+
+struct acl_info {
+	acl_type_t acl_type;		/* style of acl */
+	int acl_cnt;			/* number of acl entries */
+	int acl_entry_size;		/* sizeof acl entry */
+	int acl_flags;			/* special flags about acl */
+	void *acl_aclp;			/* the acl */
+};
 
 typedef struct ace {
         uid_t a_who;
@@ -113,5 +133,30 @@ typedef struct ace_object {
 #define VSA_ACECNT                                      0x0020
 #define VSA_ACE_ALLTYPES                                0x0040
 #define VSA_ACE_ACLFLAGS                                0x0080
+
+/*
+ * The following are Defined types for an aclent_t.
+ */
+#define	USER_OBJ	(0x01)		/* object owner */
+#define	USER		(0x02)		/* additional users */
+#define	GROUP_OBJ	(0x04)		/* owning group of the object */
+#define	GROUP		(0x08)		/* additional groups */
+#define	CLASS_OBJ	(0x10)		/* file group class and mask entry */
+#define	OTHER_OBJ	(0x20)		/* other entry for the object */
+#define	ACL_DEFAULT	(0x1000)	/* default flag */
+/* default object owner */
+#define	DEF_USER_OBJ	(ACL_DEFAULT | USER_OBJ)
+/* default additional users */
+#define	DEF_USER	(ACL_DEFAULT | USER)
+/* default owning group */
+#define	DEF_GROUP_OBJ	(ACL_DEFAULT | GROUP_OBJ)
+/* default additional groups */
+#define	DEF_GROUP	(ACL_DEFAULT | GROUP)
+/* default mask entry */
+#define	DEF_CLASS_OBJ	(ACL_DEFAULT | CLASS_OBJ)
+/* default other entry */
+#define	DEF_OTHER_OBJ	(ACL_DEFAULT | OTHER_OBJ)
+
+
 
 #endif /* _SPL_ACL_H */

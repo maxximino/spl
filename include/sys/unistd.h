@@ -25,4 +25,8 @@
 #ifndef _SPL_UNISTD_H
 #define _SPL_UNISTD_H
 
+#define	_ACL_ACLENT_ENABLED	0x1
+#define	_ACL_ACE_ENABLED	0x2
+
+
 #endif /* SPL_UNISTD_H */
