@@ -48,17 +48,19 @@ static int
 splat_cred_test1(struct file *file, void *arg)
 {
 	char str[GROUP_STR_SIZE];
-	uid_t uid, ruid, suid;
-	gid_t gid, rgid, sgid, *groups;
+	uid_t uid, ruid, suid, fsuid;
+	gid_t gid, rgid, sgid, fsgid, *groups;
 	int ngroups, i, count = 0;
 
 	uid  = crgetuid(CRED());
 	ruid = crgetruid(CRED());
 	suid = crgetsuid(CRED());
+	fsuid = crgetfsuid(CRED());
 
 	gid  = crgetgid(CRED());
 	rgid = crgetrgid(CRED());
 	sgid = crgetsgid(CRED());
+	fsgid = crgetfsgid(CRED());
 
 	crhold(CRED());
 	ngroups = crgetngroups(CRED());
@@ -79,13 +81,13 @@ splat_cred_test1(struct file *file, void *arg)
 	crfree(CRED());
 
 	splat_vprint(file, SPLAT_CRED_TEST1_NAME,
-		     "uid: %d ruid: %d suid: %d "
-		     "gid: %d rgid: %d sgid: %d\n",
-		     uid, ruid, suid, gid, rgid, sgid);
+		     "uid: %d ruid: %d suid: %d fsuid: %d "
+		     "gid: %d rgid: %d sgid: %d fsgid: %d\n",
+		     uid, ruid, suid,fsuid, gid, rgid, sgid,fsgid);
 	splat_vprint(file, SPLAT_CRED_TEST1_NAME,
 		     "ngroups: %d groups: %s\n", ngroups, str);
 
-	if (uid || ruid || suid || gid || rgid || sgid) {
+	if (uid || ruid || suid || fsuid || gid || rgid || sgid || fsgid) {
 		splat_vprint(file, SPLAT_CRED_TEST1_NAME,
 			     "Failed expected all uids+gids to be %d\n", 0);
 		return -EIDRM;
@@ -108,17 +110,19 @@ static int
 splat_cred_test2(struct file *file, void *arg)
 {
 	char str[GROUP_STR_SIZE];
-	uid_t uid, ruid, suid;
-	gid_t gid, rgid, sgid, *groups;
+	uid_t uid, ruid, suid, fsuid;
+	gid_t gid, rgid, sgid, fsgid, *groups;
 	int ngroups, i, count = 0;
 
 	uid  = crgetuid(kcred);
 	ruid = crgetruid(kcred);
 	suid = crgetsuid(kcred);
+	fsuid = crgetfsuid(kcred);
 
 	gid  = crgetgid(kcred);
 	rgid = crgetrgid(kcred);
 	sgid = crgetsgid(kcred);
+	fsgid = crgetfsgid(kcred);
 
 	crhold(kcred);
 	ngroups = crgetngroups(kcred);
@@ -139,13 +143,13 @@ splat_cred_test2(struct file *file, void *arg)
 	crfree(kcred);
 
 	splat_vprint(file, SPLAT_CRED_TEST2_NAME,
-		     "uid: %d ruid: %d suid: %d "
-		     "gid: %d rgid: %d sgid: %d\n",
-		     uid, ruid, suid, gid, rgid, sgid);
+		     "uid: %d ruid: %d suid: %d fsuid: %d "
+		     "gid: %d rgid: %d sgid: %d fsgid: %d\n",
+		     uid, ruid, suid, fsuid, gid, rgid, sgid, fsgid);
 	splat_vprint(file, SPLAT_CRED_TEST2_NAME,
 		     "ngroups: %d groups: %s\n", ngroups, str);
 
-	if (uid || ruid || suid || gid || rgid || sgid) {
+	if (uid || ruid || suid || fsuid || gid || rgid || sgid || fsgid) {
 		splat_vprint(file, SPLAT_CRED_TEST2_NAME,
 			     "Failed expected all uids+gids to be %d\n", 0);
 		return -EIDRM;
