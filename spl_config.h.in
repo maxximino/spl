@@ -60,6 +60,9 @@
 /* class_device_create() is available */
 #undef HAVE_CLASS_DEVICE_CREATE
 
+/* __clear_close_on_exec() is available */
+#undef HAVE_CLEAR_CLOSE_ON_EXEC
+
 /* struct cred exists */
 #undef HAVE_CRED_STRUCT
 
@@ -162,6 +165,9 @@
 /* pgdat_list is available */
 #undef HAVE_PGDAT_LIST
 
+/* pmd_alloc_with_mask exists */
+#undef HAVE_PMD_ALLOC_WITH_MASK
+
 /* __put_task_struct() is available */
 #undef HAVE_PUT_TASK_STRUCT
 
@@ -204,7 +210,7 @@
 /* Define to 1 if you have the <sys/types.h> header file. */
 #undef HAVE_SYS_TYPES_H
 
-/* task_curr() exported */
+/* task_curr() is available */
 #undef HAVE_TASK_CURR
 
 /* timespec_sub() is available */
