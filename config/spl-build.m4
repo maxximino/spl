@@ -8,7 +8,6 @@
 
 AC_DEFUN([SPL_AC_CONFIG_KERNEL], [
 	SPL_AC_KERNEL
-	SPL_AC_KERNEL_CONFIG
 
 	if test "${LINUX_OBJ}" != "${LINUX}"; then
 		KERNELMAKE_PARAMS="$KERNELMAKE_PARAMS O=$LINUX_OBJ"
@@ -43,9 +42,6 @@ AC_DEFUN([SPL_AC_CONFIG_KERNEL], [
 	SPL_AC_SET_NORMALIZED_TIMESPEC_INLINE
 	SPL_AC_TIMESPEC_SUB
 	SPL_AC_INIT_UTSNAME
-	SPL_AC_FDTABLE_HEADER
-	SPL_AC_FILES_FDTABLE
-	SPL_AC_CLEAR_CLOSE_ON_EXEC
 	SPL_AC_UACCESS_HEADER
 	SPL_AC_KMALLOC_NODE
 	SPL_AC_MONOTONIC_CLOCK
@@ -73,6 +69,7 @@ AC_DEFUN([SPL_AC_CONFIG_KERNEL], [
 	SPL_AC_4ARGS_VFS_RENAME
 	SPL_AC_VFS_FSYNC
 	SPL_AC_2ARGS_VFS_FSYNC
+	SPL_AC_INODE_TRUNCATE_RANGE
 	SPL_AC_FS_STRUCT_SPINLOCK
 	SPL_AC_CRED_STRUCT
 	SPL_AC_GROUPS_SEARCH
@@ -86,10 +83,10 @@ AC_DEFUN([SPL_AC_CONFIG_KERNEL], [
 	SPL_AC_SHRINK_ICACHE_MEMORY
 	SPL_AC_KERN_PATH_PARENT_HEADER
 	SPL_AC_KERN_PATH_PARENT_SYMBOL
+	SPL_AC_KERN_PATH_LOCKED
 	SPL_AC_2ARGS_ZLIB_DEFLATE_WORKSPACESIZE
 	SPL_AC_SHRINK_CONTROL_STRUCT
 	SPL_AC_RWSEM_SPINLOCK_IS_RAW
-	SPL_AC_PMD_ALLOC_WITH_MASK
 ])
 
 AC_DEFUN([SPL_AC_MODULE_SYMVERS], [
@@ -217,13 +214,6 @@ AC_DEFUN([SPL_AC_KERNEL], [
 	AC_SUBST(LINUX_VERSION)
 
 	SPL_AC_MODULE_SYMVERS
-])
-
-AC_DEFUN([SPL_AC_KERNEL_CONFIG], [
-	SPL_LINUX_CONFIG([PREEMPT],
-		AC_MSG_ERROR([
-		*** Kernel built with CONFIG_PREEMPT which is not supported.
-		** You must rebuild your kernel without this option.]), [])
 ])
 
 dnl #
@@ -652,26 +642,6 @@ AC_DEFUN([SPL_LINUX_TRY_COMPILE],
 	[modules],
 	[test -s build/conftest.o],
 	[$3], [$4])
-])
-
-dnl #
-dnl # SPL_LINUX_CONFIG
-dnl #
-AC_DEFUN([SPL_LINUX_CONFIG],
-	[AC_MSG_CHECKING([whether Linux was built with CONFIG_$1])
-	SPL_LINUX_TRY_COMPILE([
-		#include <linux/module.h>
-	],[
-		#ifndef CONFIG_$1
-		#error CONFIG_$1 not #defined
-		#endif
-	],[
-		AC_MSG_RESULT([yes])
-		$2
-	],[
-		AC_MSG_RESULT([no])
-		$3
-	])
 ])
 
 dnl #
@@ -1212,60 +1182,6 @@ AC_DEFUN([SPL_AC_INIT_UTSNAME], [
 	],[
 		AC_MSG_RESULT(yes)
 		AC_DEFINE(HAVE_INIT_UTSNAME, 1, [init_utsname() is available])
-	],[
-		AC_MSG_RESULT(no)
-	])
-])
-
-dnl #
-dnl # 2.6.26 API change,
-dnl # definition of struct fdtable relocated to linux/fdtable.h
-dnl #
-AC_DEFUN([SPL_AC_FDTABLE_HEADER], [
-	SPL_CHECK_HEADER([linux/fdtable.h], [FDTABLE], [], [])
-])
-
-dnl #
-dnl # 2.6.14 API change,
-dnl # check whether 'files_fdtable()' exists
-dnl #
-AC_DEFUN([SPL_AC_FILES_FDTABLE], [
-	AC_MSG_CHECKING([whether files_fdtable() is available])
-	SPL_LINUX_TRY_COMPILE([
-		#include <linux/sched.h>
-		#include <linux/file.h>
-		#ifdef HAVE_FDTABLE_HEADER
-		#include <linux/fdtable.h>
-		#endif
-	],[
-		struct files_struct *files = current->files;
-		struct fdtable *fdt __attribute__ ((unused));
-		fdt = files_fdtable(files);
-	],[
-		AC_MSG_RESULT(yes)
-		AC_DEFINE(HAVE_FILES_FDTABLE, 1, [files_fdtable() is available])
-	],[
-		AC_MSG_RESULT(no)
-	])
-])
-
-dnl #
-dnl # 3.4.0 API change,
-dnl # check whether '__clear_close_on_exec()' exists
-dnl #
-AC_DEFUN([SPL_AC_CLEAR_CLOSE_ON_EXEC], [
-	AC_MSG_CHECKING([whether __clear_close_on_exec() is available])
-	SPL_LINUX_TRY_COMPILE([
-		#include <linux/fdtable.h>
-	],[
-		struct fdtable *fdt = NULL;
-		int fd = 0;
-
-		__clear_close_on_exec(fd, fdt);
-	],[
-		AC_MSG_RESULT(yes)
-		AC_DEFINE(HAVE_CLEAR_CLOSE_ON_EXEC, 1,
-			  [__clear_close_on_exec() is available])
 	],[
 		AC_MSG_RESULT(no)
 	])
@@ -2022,6 +1938,27 @@ AC_DEFUN([SPL_AC_2ARGS_VFS_FSYNC], [
 ])
 
 dnl #
+dnl # 3.5 API change,
+dnl # inode_operations.truncate_range removed
+dnl # (deprecated in favor of FALLOC_FL_PUNCH_HOLE)
+dnl #
+AC_DEFUN([SPL_AC_INODE_TRUNCATE_RANGE], [
+	AC_MSG_CHECKING([whether truncate_range() inode operation is available])
+	SPL_LINUX_TRY_COMPILE([
+		#include <linux/fs.h>
+	],[
+		struct inode_operations ops;
+		ops.truncate_range = NULL;
+	],[
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_INODE_TRUNCATE_RANGE, 1,
+			[truncate_range() inode operation is available])
+	],[
+		AC_MSG_RESULT(no)
+	])
+]))
+
+dnl #
 dnl # 2.6.33 API change. Also backported in RHEL5 as of 2.6.18-190.el5.
 dnl # Earlier versions of rwsem_is_locked() were inline and had a race
 dnl # condition.  The fixed version is exported as a symbol.  The race
@@ -2072,9 +2009,10 @@ AC_DEFUN([SPL_AC_KERNEL_INVALIDATE_INODES], [
 	AC_MSG_CHECKING([whether invalidate_inodes_check() is available])
 	SPL_LINUX_TRY_COMPILE_SYMBOL([
 		#include <linux/fs.h>
-	], [
-		invalidate_inodes_check(NULL, 0);
-	], [invalidate_inodes_check], [], [
+		#ifndef invalidate_inodes
+		#error invalidate_inodes is not a macro
+		#endif
+	], [ ], [invalidate_inodes_check], [], [
 		AC_MSG_RESULT(yes)
 		AC_DEFINE(HAVE_INVALIDATE_INODES_CHECK, 1,
 		          [invalidate_inodes_check() is available])
@@ -2194,6 +2132,21 @@ AC_DEFUN([SPL_AC_KERN_PATH_PARENT_SYMBOL],
 ])
 
 dnl #
+dnl # 3.6 API compat,
+dnl # The kern_path_parent() function was replaced by the kern_path_locked()
+dnl # function to eliminate all struct nameidata usage outside fs/namei.c.
+dnl #
+AC_DEFUN([SPL_AC_KERN_PATH_LOCKED], [
+	SPL_CHECK_SYMBOL_HEADER(
+		[kern_path_locked],
+		[struct dentry \*kern_path_locked(const char \*, struct path \*)],
+		[include/linux/namei.h],
+		[AC_DEFINE(HAVE_KERN_PATH_LOCKED, 1,
+		[kern_path_locked() is available])],
+		[])
+])
+
+dnl #
 dnl # 2.6.39 API compat,
 dnl # The function zlib_deflate_workspacesize() now take 2 arguments.
 dnl # This was done to avoid always having to allocate the maximum size
@@ -2261,39 +2214,4 @@ AC_DEFUN([SPL_AC_RWSEM_SPINLOCK_IS_RAW], [
 		AC_MSG_RESULT(no)
 	])
 	EXTRA_KCFLAGS="$tmp_flags"
-])
-
-dnl #
-dnl # Proposed VM Subsystem Bug Fix
-dnl # https://bugs.gentoo.org/show_bug.cgi?id=416685
-dnl #
-dnl # Make __pte_alloc_kernel() honor gfp flags passed to vmalloc()
-dnl # This is detected by checking a macro that is changed to support this.
-dnl #
-AC_DEFUN([SPL_AC_PMD_ALLOC_WITH_MASK], [
-	AC_MSG_CHECKING([whether pmd_alloc_with_mask exists])
-	SPL_LINUX_TRY_COMPILE([
-		#if !defined(CONFIG_MMU)
-		#define CONFIG_MMU
-		#endif
-
-		#if defined(RCH_HAS_4LEVEL_HACK)
-		#undef RCH_HAS_4LEVEL_HACK
-		#endif
-
-		#include <linux/mm.h>
-	],[
-		struct mm_struct init_mm;
-		pud_t *pud = NULL;
-		unsigned long addr = 0;
-		gfp_t gfp_mask = GFP_KERNEL;
-
-		pmd_alloc_with_mask(&init_mm, pud, addr, gfp_mask);
-	],[
-		AC_MSG_RESULT(yes)
-		AC_DEFINE(HAVE_PMD_ALLOC_WITH_MASK, 1,
-		          [pmd_alloc_with_mask exists])
-	],[
-		AC_MSG_RESULT(no)
-	])
 ])

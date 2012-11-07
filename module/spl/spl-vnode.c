@@ -25,6 +25,7 @@
 \*****************************************************************************/
 
 #include <sys/vnode.h>
+#include <linux/falloc.h>
 #include <spl-debug.h>
 
 #ifdef SS_DEBUG_SUBSYS
@@ -48,6 +49,10 @@ kern_path_parent_t kern_path_parent_fn = SYMBOL_POISON;
 EXPORT_SYMBOL(kern_path_parent_fn);
 #endif /* HAVE_KERN_PATH_PARENT_SYMBOL */
 #endif /* HAVE_KERN_PATH_PARENT_HEADER */
+
+#ifdef HAVE_KERN_PATH_LOCKED
+kern_path_locked_t kern_path_locked_fn = SYMBOL_POISON;
+#endif /* HAVE_KERN_PATH_LOCKED */
 
 vtype_t
 vn_mode_to_vtype(mode_t mode)
@@ -297,6 +302,128 @@ vn_seek(vnode_t *vp, offset_t ooff, offset_t *noffp, void *ct)
 }
 EXPORT_SYMBOL(vn_seek);
 
+#ifdef HAVE_KERN_PATH_LOCKED
+/* Based on do_unlinkat() from linux/fs/namei.c */
+int
+vn_remove(const char *path, uio_seg_t seg, int flags)
+{
+	struct dentry *dentry;
+	struct path parent;
+	struct inode *inode = NULL;
+	int rc = 0;
+	SENTRY;
+
+	ASSERT(seg == UIO_SYSSPACE);
+	ASSERT(flags == RMFILE);
+
+	dentry = spl_kern_path_locked(path, &parent);
+	rc = PTR_ERR(dentry);
+	if (!IS_ERR(dentry)) {
+		if (parent.dentry->d_name.name[parent.dentry->d_name.len])
+			SGOTO(slashes, rc = 0);
+
+		inode = dentry->d_inode;
+		if (!inode)
+			SGOTO(slashes, rc = 0);
+
+		if (inode)
+			ihold(inode);
+
+		rc = vfs_unlink(parent.dentry->d_inode, dentry);
+exit1:
+		dput(dentry);
+	}
+
+	spl_inode_unlock(parent.dentry->d_inode);
+	if (inode)
+		iput(inode);    /* truncate the inode here */
+
+	path_put(&parent);
+	SRETURN(-rc);
+
+slashes:
+	rc = !dentry->d_inode ? -ENOENT :
+	    S_ISDIR(dentry->d_inode->i_mode) ? -EISDIR : -ENOTDIR;
+	SGOTO(exit1, rc);
+} /* vn_remove() */
+EXPORT_SYMBOL(vn_remove);
+
+/* Based on do_rename() from linux/fs/namei.c */
+int
+vn_rename(const char *oldname, const char *newname, int x1)
+{
+	struct dentry *old_dir, *new_dir;
+	struct dentry *old_dentry, *new_dentry;
+	struct dentry *trap;
+	struct path old_parent, new_parent;
+	int rc = 0;
+	SENTRY;
+
+	old_dentry = spl_kern_path_locked(oldname, &old_parent);
+	if (IS_ERR(old_dentry))
+		SGOTO(exit, rc = PTR_ERR(old_dentry));
+
+	spl_inode_unlock(old_parent.dentry->d_inode);
+
+	new_dentry = spl_kern_path_locked(newname, &new_parent);
+	if (IS_ERR(new_dentry))
+		SGOTO(exit2, rc = PTR_ERR(new_dentry));
+
+	spl_inode_unlock(new_parent.dentry->d_inode);
+
+	rc = -EXDEV;
+	if (old_parent.mnt != new_parent.mnt)
+		SGOTO(exit3, rc);
+
+	old_dir = old_parent.dentry;
+	new_dir = new_parent.dentry;
+	trap = lock_rename(new_dir, old_dir);
+
+	/* source should not be ancestor of target */
+	rc = -EINVAL;
+	if (old_dentry == trap)
+		SGOTO(exit4, rc);
+
+	/* target should not be an ancestor of source */
+	rc = -ENOTEMPTY;
+	if (new_dentry == trap)
+		SGOTO(exit4, rc);
+
+	/* source must exist */
+	rc = -ENOENT;
+	if (!old_dentry->d_inode)
+		SGOTO(exit4, rc);
+
+	/* unless the source is a directory trailing slashes give -ENOTDIR */
+	if (!S_ISDIR(old_dentry->d_inode->i_mode)) {
+		rc = -ENOTDIR;
+		if (old_dentry->d_name.name[old_dentry->d_name.len])
+			SGOTO(exit4, rc);
+		if (new_dentry->d_name.name[new_dentry->d_name.len])
+			SGOTO(exit4, rc);
+	}
+
+#ifdef HAVE_4ARGS_VFS_RENAME
+	rc = vfs_rename(old_dir->d_inode, old_dentry,
+			new_dir->d_inode, new_dentry);
+#else
+	rc = vfs_rename(old_dir->d_inode, old_dentry, oldnd.nd_mnt,
+			new_dir->d_inode, new_dentry, newnd.nd_mnt);
+#endif /* HAVE_4ARGS_VFS_RENAME */
+exit4:
+	unlock_rename(new_dir, old_dir);
+exit3:
+	dput(new_dentry);
+	path_put(&new_parent);
+exit2:
+	dput(old_dentry);
+	path_put(&old_parent);
+exit:
+	SRETURN(-rc);
+}
+EXPORT_SYMBOL(vn_rename);
+
+#else
 static struct dentry *
 vn_lookup_hash(struct nameidata *nd)
 {
@@ -457,6 +584,7 @@ exit:
         SRETURN(-rc);
 }
 EXPORT_SYMBOL(vn_rename);
+#endif /* HAVE_KERN_PATH_LOCKED */
 
 int
 vn_getattr(vnode_t *vp, vattr_t *vap, int flags, void *x3, void *x4)
@@ -509,6 +637,58 @@ int vn_fsync(vnode_t *vp, int flags, void *x3, void *x4)
 	SRETURN(-spl_filp_fsync(vp->v_file, datasync));
 } /* vn_fsync() */
 EXPORT_SYMBOL(vn_fsync);
+
+int vn_space(vnode_t *vp, int cmd, struct flock *bfp, int flag,
+    offset_t offset, void *x6, void *x7)
+{
+	int error = EOPNOTSUPP;
+	SENTRY;
+
+	if (cmd != F_FREESP || bfp->l_whence != 0)
+		SRETURN(EOPNOTSUPP);
+
+	ASSERT(vp);
+	ASSERT(vp->v_file);
+	ASSERT(bfp->l_start >= 0 && bfp->l_len > 0);
+
+#ifdef FALLOC_FL_PUNCH_HOLE
+	if (vp->v_file->f_op->fallocate) {
+		error = -vp->v_file->f_op->fallocate(vp->v_file,
+		    FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE,
+		    bfp->l_start, bfp->l_len);
+		if (!error)
+			SRETURN(0);
+	}
+#endif
+
+#ifdef HAVE_INODE_TRUNCATE_RANGE
+	if (vp->v_file->f_dentry && vp->v_file->f_dentry->d_inode &&
+	    vp->v_file->f_dentry->d_inode->i_op &&
+	    vp->v_file->f_dentry->d_inode->i_op->truncate_range) {
+		off_t end = bfp->l_start + bfp->l_len;
+		/*
+		 * Judging from the code in shmem_truncate_range(),
+		 * it seems the kernel expects the end offset to be
+		 * inclusive and aligned to the end of a page.
+		 */
+		if (end % PAGE_SIZE != 0) {
+			end &= ~(off_t)(PAGE_SIZE - 1);
+			if (end <= bfp->l_start)
+				SRETURN(0);
+		}
+		--end;
+
+		vp->v_file->f_dentry->d_inode->i_op->truncate_range(
+			vp->v_file->f_dentry->d_inode,
+			bfp->l_start, end
+		);
+		SRETURN(0);
+	}
+#endif
+
+	SRETURN(error);
+}
+EXPORT_SYMBOL(vn_space);
 
 /* Function must be called while holding the vn_file_lock */
 static file_t *
@@ -808,6 +988,15 @@ int spl_vn_init_kallsyms_lookup(void)
 	}
 #endif /* HAVE_KERN_PATH_PARENT_SYMBOL */
 #endif /* HAVE_KERN_PATH_PARENT_HEADER */
+
+#ifdef HAVE_KERN_PATH_LOCKED
+        kern_path_locked_fn = (kern_path_locked_t)
+                spl_kallsyms_lookup_name("kern_path_locked");
+        if (!kern_path_locked_fn) {
+                printk(KERN_ERR "Error: Unknown symbol kern_path_locked\n");
+                return -EFAULT;
+        }
+#endif
 
 	return (0);
 }
