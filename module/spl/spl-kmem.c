@@ -2047,6 +2047,7 @@ void
 spl_kmem_cache_free(spl_kmem_cache_t *skc, void *obj)
 {
 	spl_kmem_magazine_t *skm;
+	spl_kmem_obj_t *sko;
 	unsigned long flags;
 	SENTRY;
 
@@ -2061,6 +2062,15 @@ spl_kmem_cache_free(spl_kmem_cache_t *skc, void *obj)
 	 */
 	if ((skc->skc_flags & KMC_VMEM) && !kmem_virt(obj))
 		SGOTO(out, spl_emergency_free(skc, obj));
+
+	sko = spl_sko_from_obj(skc,obj);
+	if(sko->sko_slab->sks_ref < (sko->sko_slab->sks_objs >> 3)){ //12.5%
+		spin_lock(&skc->skc_lock); //SPINLOCK in free function..slow but frees more memory.
+		//possible improvement: per-cpu to-be-released objects list.
+		spl_cache_shrink(skc,obj);
+		spin_unlock(&skc->skc_lock);
+		SGOTO(out,1);
+	}
 
 	local_irq_save(flags);
 
