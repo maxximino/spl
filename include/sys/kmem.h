@@ -416,21 +416,23 @@ typedef struct spl_kmem_magazine {
 	void			*skm_objs[0];	/* Object pointers */
 } spl_kmem_magazine_t;
 
-typedef struct spl_kmem_obj {
-        uint32_t		sko_magic;	/* Sanity magic */
-	void			*sko_addr;	/* Buffer address */
-	struct spl_kmem_slab	*sko_slab;	/* Owned by slab */
-	struct list_head	sko_list;	/* Free object list linkage */
-} spl_kmem_obj_t;
-
+//typedef struct spl_kmem_obj {
+//      uint32_t		sko_magic;	/* Sanity magic */
+//	void			*sko_addr;	/* Buffer address */
+//	struct spl_kmem_slab	*sko_slab;	/* Owned by slab */
+//	struct list_head	sko_list;	/* Free object list linkage */
+//} spl_kmem_obj_t;
+#define U64_PER_BITMAP 2
 typedef struct spl_kmem_slab {
         uint32_t		sks_magic;	/* Sanity magic */
 	uint32_t		sks_objs;	/* Objects per slab */
 	struct spl_kmem_cache	*sks_cache;	/* Owned by cache */
 	struct list_head	sks_list;	/* Slab list linkage */
-	struct list_head	sks_free_list;	/* Free object list */
 	unsigned long		sks_age;	/* Last modify jiffie */
 	uint32_t		sks_ref;	/* Ref count used objects */
+	struct hlist_node	sks_hash_list;	/* List of slabs with same hash */
+	struct hlist_node	sks_hash_list2;	/* List of slabs with same second possible hash */
+	uint64_t		free_bitmap[U64_PER_BITMAP]; /* 2 == 128 elements, appropriately describe why TODO*/
 } spl_kmem_slab_t;
 
 typedef struct spl_kmem_alloc {
@@ -443,7 +445,7 @@ typedef struct spl_kmem_emergency {
 	struct rb_node		ske_node;	/* Emergency tree linkage */
 	void			*ske_obj;	/* Buffer address */
 } spl_kmem_emergency_t;
-
+#define HASHBITS 12
 typedef struct spl_kmem_cache {
 	uint32_t		skc_magic;	/* Sanity magic */
 	uint32_t		skc_name_size;	/* Name length */
@@ -483,6 +485,8 @@ typedef struct spl_kmem_cache {
 	uint64_t		skc_obj_deadlock;  /* Obj emergency deadlocks */
 	uint64_t		skc_obj_emergency; /* Obj emergency current */
 	uint64_t		skc_obj_emergency_max; /* Obj emergency max */
+	uint32_t		hash_skipbits; 
+	struct hlist_head	hash_table[1 << HASHBITS]; /* HASH TABLE for mapping objects to slabs. 12 bits*/
 } spl_kmem_cache_t;
 #define kmem_cache_t		spl_kmem_cache_t
 
