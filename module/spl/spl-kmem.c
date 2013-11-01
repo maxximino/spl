@@ -1385,6 +1385,7 @@ spl_slab_size(spl_kmem_cache_t *skc, uint32_t *objs, uint32_t *size)
 		/* Power of two sized slab */
 		for (*size = PAGE_SIZE; *size <= max_size; *size *= 2) {
 			*objs = (*size - sks_size) / obj_size;
+			//printk("*objs == %i, U64_PER_BITMAP=%i\n",*objs,U64_PER_BITMAP);
 			ASSERT(*objs <= 64*U64_PER_BITMAP);
 			if (*objs >= SPL_KMEM_CACHE_OBJ_PER_SLAB)
 				SRETURN(0);
@@ -2286,6 +2287,11 @@ spl_kmem_reap(void)
 }
 EXPORT_SYMBOL(spl_kmem_reap);
 
+bool spl_kmem_needs_reassign(spl_kmem_cache_t *skc,void* obj){
+	spl_kmem_slab_t *sks = spl_sks_from_obj(skc,obj);
+	return (sks->sks_ref < (sks->sks_objs >> 2)); //25%
+}
+EXPORT_SYMBOL(spl_kmem_needs_reassign);
 #if defined(DEBUG_KMEM) && defined(DEBUG_KMEM_TRACKING)
 static char *
 spl_sprintf_addr(kmem_debug_t *kd, char *str, int len, int min)

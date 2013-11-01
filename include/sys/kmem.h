@@ -422,7 +422,7 @@ typedef struct spl_kmem_magazine {
 //	struct spl_kmem_slab	*sko_slab;	/* Owned by slab */
 //	struct list_head	sko_list;	/* Free object list linkage */
 //} spl_kmem_obj_t;
-#define U64_PER_BITMAP 2
+#define U64_PER_BITMAP 8
 typedef struct spl_kmem_slab {
         uint32_t		sks_magic;	/* Sanity magic */
 	uint32_t		sks_objs;	/* Objects per slab */
@@ -500,6 +500,7 @@ extern void *spl_kmem_cache_alloc(spl_kmem_cache_t *skc, int flags);
 extern void spl_kmem_cache_free(spl_kmem_cache_t *skc, void *obj);
 extern void spl_kmem_cache_reap_now(spl_kmem_cache_t *skc, int count);
 extern void spl_kmem_reap(void);
+extern bool spl_kmem_needs_reassign(spl_kmem_cache_t *skc, void* obj);
 
 int spl_kmem_init_kallsyms_lookup(void);
 int spl_kmem_init(void);
